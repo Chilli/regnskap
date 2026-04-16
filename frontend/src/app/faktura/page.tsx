@@ -36,8 +36,8 @@ export default function FakturaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [fakturaForm, setFakturaForm] = useState({ bolig_id: 0, beskrivelse: "Felleskostnader", belop: 5000, inntektskonto: "3600", mva_sats: 0 });
-  const [avtaleForm, setAvtaleForm] = useState({ bolig_id: 0, alle_boliger: true, beskrivelse: "Felleskostnader", belop: 500, frekvens: 1, start_dato: new Date().toISOString().slice(0, 10), inntektskonto: "3600", mva_sats: 0 });
+  const [fakturaForm, setFakturaForm] = useState({ bolig_id: 0, beskrivelse: "Felleskostnader", belop: 5000, inntektskonto: "3920", mva_sats: 0 });
+  const [avtaleForm, setAvtaleForm] = useState({ bolig_id: 0, alle_boliger: true, beskrivelse: "Felleskostnader", belop: 500, frekvens: 1, start_dato: new Date().toISOString().slice(0, 10), inntektskonto: "3920", mva_sats: 0 });
   const [kjorDato, setKjorDato] = useState(new Date().toISOString().slice(0, 10));
   const [kjorer, setKjorer] = useState(false);
 
@@ -196,6 +196,7 @@ export default function FakturaPage() {
               <input type="number" className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" value={fakturaForm.belop} onChange={e => setFakturaForm(c => ({ ...c, belop: Number(e.target.value) }))} placeholder="Beløp (kr)" />
               <div className="grid grid-cols-2 gap-3">
                 <select className="border border-gray-300 rounded-md px-3 py-2 text-sm" value={fakturaForm.inntektskonto} onChange={e => setFakturaForm(c => ({ ...c, inntektskonto: e.target.value }))}>
+                  <option value="3920">3920 - Innkrevde felleskostnader</option>
                   <option value="3600">3600 - Felleskost</option>
                   <option value="3900">3900 - Annen inntekt</option>
                 </select>
@@ -306,6 +307,14 @@ export default function FakturaPage() {
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Beskrivelse på faktura</label>
                   <input className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" value={avtaleForm.beskrivelse} onChange={e => setAvtaleForm(c => ({ ...c, beskrivelse: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Inntektskonto</label>
+                  <select className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm" value={avtaleForm.inntektskonto} onChange={e => setAvtaleForm(c => ({ ...c, inntektskonto: e.target.value }))}>
+                    <option value="3920">3920 - Innkrevde felleskostnader</option>
+                    <option value="3600">3600 - Felleskost</option>
+                    <option value="3900">3900 - Annen inntekt</option>
+                  </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Første faktura (dato)</label>
