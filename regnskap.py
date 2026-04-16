@@ -399,22 +399,26 @@ class EpostTjeneste:
     def send_faktura(kunde: Kunde, faktura_id: int, belop: float, selskap: SelskapInfo, vedlegg_sti: str = None, er_kreditnota: bool = False):
         tittel = "KREDITNOTA" if er_kreditnota else "FAKTURA"
         
+        adresse = kunde.adresse or kunde.navn
         innhold = f"""Hei {kunde.navn},
 
 Her kommer {tittel.lower()} #{faktura_id} fra {selskap.navn}.
 
 Beløp: {belop:.2f} kr
-Forfallsdato: Se vedlegg (Simulert)
 Bankkonto: {selskap.bankkonto}
+
+Se vedlagt PDF for detaljer og forfallsdato.
 
 Vennlig hilsen
 {selskap.navn}
 """
         msg = EmailMessage()
         msg.set_content(innhold)
-        msg['Subject'] = f"{tittel} #{faktura_id} - {selskap.navn}"
+        msg['Subject'] = f"{tittel} #{faktura_id} – {adresse} – {selskap.navn}"
         msg['From'] = selskap.epost_avsender
         msg['To'] = kunde.epost
+        msg['X-Faktura-ID'] = str(faktura_id)
+        msg['X-Faktura-Adresse'] = adresse
 
         # Legg til PDF vedlegg hvis det finnes
         if vedlegg_sti and os.path.exists(vedlegg_sti):
