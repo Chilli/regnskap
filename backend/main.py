@@ -8,6 +8,7 @@ import datetime
 import shutil
 import csv
 import io
+import json
 from contextlib import asynccontextmanager
 import sys
 import os
@@ -22,23 +23,96 @@ from regnskap import (
 
 DEFAULT_SENDER_EMAIL = "jcmadsen@gmail.com"
 
-# Initialize database connection
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    app.state.system = RegnskapsSystem()
-    app.state.reskontro = ReskontroManager(app.state.system.db)
-    app.state.selskap = SelskapManager(app.state.system.db)
-    app.state.avtaler = AvtaleManager(app.state.system.db)
-    app.state.faktura = FakturaManager(
-        app.state.system.db, 
-        app.state.system, 
-        app.state.reskontro, 
-        app.state.selskap, 
-        app.state.avtaler
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODUS_FIL = os.path.join(BASE_DIR, "modus.json")
+DEMO_DB   = "regnskap_demo.db"
+PROD_DB   = "regnskap_prod.db"
+
+
+def les_modus() -> str:
+    if os.path.exists(MODUS_FIL):
+        try:
+            return json.load(open(MODUS_FIL))["modus"]
+        except Exception:
+            pass
+    return "demo"
+
+
+def skriv_modus(modus: str):
+    with open(MODUS_FIL, "w") as f:
+        json.dump({"modus": modus}, f)
+
+
+def seed_demo_db(db_navn: str):
+    """Fyller demo-databasen med fiktive data hvis den er tom."""
+    from regnskap import (
+        RegnskapsSystem, ReskontroManager, FakturaManager,
+        SelskapManager, AvtaleManager, FakturaLinje, SelskapInfo, KontoType, Postering
     )
-    # Create bilag table if it doesn't exist
-    app.state.system.db.conn.execute("""
+    system = RegnskapsSystem(db_navn)
+    conn = system.db.conn
+    antall = conn.execute("SELECT COUNT(*) FROM transaksjon").fetchone()[0]
+    if antall > 0:
+        return  # Allerede seeded
+
+    reskontro = ReskontroManager(system.db)
+    selskap_mgr = SelskapManager(system.db)
+    avtale_mgr = AvtaleManager(system.db)
+    faktura_modul = FakturaManager(system.db, system, reskontro, selskap_mgr, avtale_mgr)
+
+    system.importer_standard_kontoplan()
+    selskap_mgr.lagre_info(SelskapInfo(
+        navn="Demo Vel",
+        adresse="Demoveien 1, 0001 Oslo",
+        orgnr="000 000 000",
+        bankkonto="0000.00.00000",
+        epost_avsender="",
+        epost_passord=""
+    ))
+
+    boliger_data = [
+        ("Ola Nordmann",   "ola@example.com",   "91000001", "Demoveien 1", "B01", 1.0, 80.0),
+        ("Kari Hansen",    "kari@example.com",  "91000002", "Demoveien 2", "B02", 1.0, 80.0),
+        ("Per Olsen",      "per@example.com",   "91000003", "Demoveien 3", "B03", 1.0, 80.0),
+        ("Maria Berg",     "maria@example.com", "91000004", "Demoveien 4", "B04", 1.0, 80.0),
+        ("Erik Dalen",     "erik@example.com",  "91000005", "Demoveien 5", "B05", 1.0, 80.0),
+        ("Lise Vold",      "lise@example.com",  "91000006", "Demoveien 6", "B06", 1.0, 80.0),
+    ]
+    kunder = []
+    for navn, epost, tlf, adr, snr, brok, areal in boliger_data:
+        kunder.append(reskontro.registrer_kunde(navn, epost, tlf, adr, snr, brok, areal))
+
+    def tx(dato, beskrivelse, posteringer):
+        system.bokfor_transaksjon(
+            datetime.date.fromisoformat(dato), beskrivelse,
+            [Postering(k, b) for k, b in posteringer]
+        )
+
+    tx("2025-01-01", "Åpningsbalanse 2025",
+       [("1920", 120000), ("2050", -80000), ("2200", -40000)])
+
+    for k in kunder:
+        for mnd in range(1, 13):
+            dato = f"2025-{mnd:02d}-01"
+            faktura_modul.opprett_faktura(k.id, [FakturaLinje(f"Felleskostnader {dato[:7]}", 1500.0, "3600", 0)])
+        for mnd in range(1, 13):
+            dato = f"2025-{mnd:02d}-15"
+            faktura_modul.registrer_innbetaling(k.id, 1500.0, datetime.date.fromisoformat(dato), f"Innbetaling {dato[:7]}")
+
+    tx("2025-01-15", "Forsikring 2025",          [("7500", 12000), ("2400", -12000)])
+    tx("2025-01-20", "Betaling forsikring",       [("2400", 12000), ("1920", -12000)])
+    tx("2025-06-01", "Vedlikehold fellesareal",   [("6600",  8000), ("2400",  -8000)])
+    tx("2025-06-15", "Betaling vedlikehold",      [("2400",  8000), ("1920",  -8000)])
+    tx("2025-12-31", "Renteinntekter 2025",       [("1920",  1800), ("8050",  -1800)])
+    tx("2025-12-31", "Bankgebyr 2025",            [("7770",   120), ("1920",   -120)])
+    tx("2025-06-30", "Avdrag lån H1",             [("2200",  5000), ("1920",  -5000)])
+    tx("2025-12-31", "Avdrag lån H2",             [("2200",  5000), ("1920",  -5000)])
+    conn.commit()
+
+
+def init_extra_tabeller(db_conn):
+    """Oppretter ekstra tabeller som ikke er i regnskap.py sitt opprett_tabeller."""
+    db_conn.execute("""
         CREATE TABLE IF NOT EXISTS bilag (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             transaksjon_id INTEGER NOT NULL,
@@ -49,16 +123,14 @@ async def lifespan(app: FastAPI):
             FOREIGN KEY(transaksjon_id) REFERENCES transaksjon(id)
         )
     """)
-    # Konto-avstemming: mark individual posterings as reconciled
-    app.state.system.db.conn.execute("""
+    db_conn.execute("""
         CREATE TABLE IF NOT EXISTS postering_avstemt (
             postering_id INTEGER PRIMARY KEY,
             avstemt_dato TEXT NOT NULL,
             FOREIGN KEY(postering_id) REFERENCES postering(id)
         )
     """)
-    # Debet/kredit matching within an account
-    app.state.system.db.conn.execute("""
+    db_conn.execute("""
         CREATE TABLE IF NOT EXISTS postering_match (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             debet_id INTEGER NOT NULL,
@@ -69,8 +141,7 @@ async def lifespan(app: FastAPI):
             FOREIGN KEY(kredit_id) REFERENCES postering(id)
         )
     """)
-    # Bank import table (imported CSV lines from DNB)
-    app.state.system.db.conn.execute("""
+    db_conn.execute("""
         CREATE TABLE IF NOT EXISTS bankpost (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             dato TEXT NOT NULL,
@@ -80,8 +151,7 @@ async def lifespan(app: FastAPI):
             periode TEXT NOT NULL
         )
     """)
-    # Matching table (bankpost <-> postering in 1920)
-    app.state.system.db.conn.execute("""
+    db_conn.execute("""
         CREATE TABLE IF NOT EXISTS bank_matching (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             bankpost_id INTEGER NOT NULL,
@@ -91,11 +161,43 @@ async def lifespan(app: FastAPI):
             FOREIGN KEY(postering_id) REFERENCES postering(id)
         )
     """)
-    # Create bilag folder if it doesn't exist
-    bilag_mappe = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bilag")
+    db_conn.commit()
+
+
+def init_app_state(a, db_navn: str):
+    """Initialiserer alle managers mot gitt database og lagrer på app.state."""
+    if hasattr(a.state, 'system') and a.state.system.db.conn:
+        try:
+            a.state.system.db.conn.close()
+        except Exception:
+            pass
+    a.state.system = RegnskapsSystem(db_navn)
+    a.state.reskontro = ReskontroManager(a.state.system.db)
+    a.state.selskap = SelskapManager(a.state.system.db)
+    a.state.avtaler = AvtaleManager(a.state.system.db)
+    a.state.faktura = FakturaManager(
+        a.state.system.db,
+        a.state.system,
+        a.state.reskontro,
+        a.state.selskap,
+        a.state.avtaler
+    )
+    init_extra_tabeller(a.state.system.db.conn)
+    bilag_mappe = os.path.join(BASE_DIR, "bilag")
     if not os.path.exists(bilag_mappe):
         os.makedirs(bilag_mappe)
-    app.state.system.db.conn.commit()
+
+
+# Initialize database connection
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    modus = les_modus()
+    db_navn = DEMO_DB if modus == "demo" else PROD_DB
+    if modus == "demo":
+        seed_demo_db(db_navn)
+    init_app_state(app, db_navn)
+    app.state.modus = modus
     yield
     # Shutdown
     app.state.system.db.conn.close()
@@ -225,6 +327,34 @@ def finn_pdf_sti(faktura_id: int) -> str:
     return full_sti
 
 # Endpoints
+
+@app.get("/api/modus")
+def hent_modus():
+    return {"modus": app.state.modus}
+
+@app.post("/api/modus")
+def bytt_modus(payload: dict):
+    ny_modus = payload.get("modus")
+    if ny_modus not in ("demo", "prod"):
+        raise HTTPException(status_code=400, detail="Ugyldig modus. Bruk 'demo' eller 'prod'.")
+    if ny_modus == app.state.modus:
+        return {"modus": app.state.modus, "message": "Allerede i denne modusen"}
+    db_navn = DEMO_DB if ny_modus == "demo" else PROD_DB
+    if ny_modus == "demo":
+        seed_demo_db(db_navn)
+    else:
+        # Initialiserer prod-db med kontoplan hvis helt ny
+        from regnskap import RegnskapsSystem
+        prod_system = RegnskapsSystem(db_navn)
+        antall_kontoer = prod_system.db.conn.execute("SELECT COUNT(*) FROM konto").fetchone()[0]
+        if antall_kontoer == 0:
+            prod_system.importer_standard_kontoplan()
+        prod_system.db.conn.close()
+    init_app_state(app, db_navn)
+    app.state.modus = ny_modus
+    skriv_modus(ny_modus)
+    return {"modus": ny_modus, "message": f"Byttet til {ny_modus}"}
+
 @app.get("/api/boliger", response_model=List[BoligResponse])
 def hent_boliger():
     kunder = app.state.reskontro.hent_alle_kunder()

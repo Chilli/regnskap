@@ -432,8 +432,8 @@ Vennlig hilsen
                 print(f"Feil ved sending av epost: {e}")
 
 class RegnskapsSystem:
-    def __init__(self):
-        self.db = Database()
+    def __init__(self, db_navn="regnskap.db"):
+        self.db = Database(db_navn)
 
     def opprett_konto(self, kode: str, navn: str, type: KontoType):
         try:
