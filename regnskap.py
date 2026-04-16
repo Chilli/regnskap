@@ -100,11 +100,17 @@ class Database:
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS transaksjon (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bilagsnr TEXT,
                 dato TEXT,
                 beskrivelse TEXT,
                 faktura_ref INTEGER
             )
         """)
+        # Migrasjon: legg til bilagsnr hvis kolonnen mangler
+        try:
+            cursor.execute("ALTER TABLE transaksjon ADD COLUMN bilagsnr TEXT")
+        except Exception:
+            pass
 
         # Tabell: Postering
         cursor.execute("""
@@ -529,11 +535,23 @@ class RegnskapsSystem:
             raise ValueError(f"Transaksjonen balanserer ikke. Differanse: {total}")
 
         cursor = self.db.conn.cursor()
-        
+
+        # Generer bilagsnr: YYYY-NNN (løpende per år)
+        ar = dato.year
+        siste = cursor.execute(
+            "SELECT bilagsnr FROM transaksjon WHERE bilagsnr LIKE ? ORDER BY bilagsnr DESC LIMIT 1",
+            (f"{ar}-%",)
+        ).fetchone()
+        if siste and siste[0]:
+            neste_nr = int(siste[0].split("-")[1]) + 1
+        else:
+            neste_nr = 1
+        bilagsnr = f"{ar}-{neste_nr:03d}"
+
         # Opprett transaksjonshode
         cursor.execute(
-            "INSERT INTO transaksjon (dato, beskrivelse, faktura_ref) VALUES (?, ?, ?)",
-            (dato.isoformat(), beskrivelse, faktura_ref)
+            "INSERT INTO transaksjon (bilagsnr, dato, beskrivelse, faktura_ref) VALUES (?, ?, ?, ?)",
+            (bilagsnr, dato.isoformat(), beskrivelse, faktura_ref)
         )
         transaksjon_id = cursor.lastrowid
 

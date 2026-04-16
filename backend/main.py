@@ -423,6 +423,67 @@ def hent_balanse():
     data = app.state.system.hent_balanse_data()
     return [BalanseRad(Kode=r['Kode'], Navn=r['Navn'], Saldo=r['Saldo']) for r in data]
 
+@app.get("/api/hovedbok")
+def hent_hovedbok(
+    konto: Optional[str] = None,
+    fra_dato: Optional[str] = None,
+    til_dato: Optional[str] = None,
+    bilagsnr: Optional[str] = None,
+    sok: Optional[str] = None,
+    ar: Optional[int] = None,
+):
+    """
+    Søkbar hovedbok. Filtrerer på konto, datoperiode, bilagsnr eller fritekst.
+    Returnerer posteringer med tilhørende transaksjonsinfo.
+    """
+    conn = app.state.system.db.conn
+    where = []
+    params = []
+
+    if ar:
+        where.append("strftime('%Y', t.dato) = ?")
+        params.append(str(ar))
+    if fra_dato:
+        where.append("t.dato >= ?")
+        params.append(fra_dato)
+    if til_dato:
+        where.append("t.dato <= ?")
+        params.append(til_dato)
+    if konto:
+        where.append("p.konto_kode = ?")
+        params.append(konto)
+    if bilagsnr:
+        where.append("t.bilagsnr LIKE ?")
+        params.append(f"%{bilagsnr}%")
+    if sok:
+        where.append("(t.beskrivelse LIKE ? OR t.bilagsnr LIKE ? OR k.navn LIKE ? OR p.konto_kode LIKE ?)")
+        params.extend([f"%{sok}%", f"%{sok}%", f"%{sok}%", f"%{sok}%"])
+
+    where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+
+    rader = conn.execute(f"""
+        SELECT
+            t.id            AS transaksjon_id,
+            t.bilagsnr,
+            t.dato,
+            t.beskrivelse,
+            t.faktura_ref,
+            p.id            AS postering_id,
+            p.konto_kode,
+            ko.navn         AS konto_navn,
+            ko.type         AS konto_type,
+            p.belop,
+            k.navn          AS kunde_navn
+        FROM postering p
+        JOIN transaksjon t ON p.transaksjon_id = t.id
+        LEFT JOIN konto ko ON p.konto_kode = ko.kode
+        LEFT JOIN kunde k ON p.kunde_id = k.id
+        {where_sql}
+        ORDER BY t.dato, t.bilagsnr, p.id
+    """, params).fetchall()
+
+    return [dict(r) for r in rader]
+
 @app.get("/api/resultat", response_model=List[ResultatRad])
 def hent_resultat(ar: Optional[int] = None):
     if ar:
