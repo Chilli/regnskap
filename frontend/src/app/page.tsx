@@ -67,7 +67,7 @@ export default function Home() {
           title="Forfalt"
           value={`${forfaltBelop.toLocaleString("no-NO")} kr`}
           subtitle={forfaltBelop > 0 ? "Krever oppfølging" : "Ingen forfalt i dag"}
-          icon="⚠️"
+          icon={forfaltBelop > 0 ? "⚠️" : undefined}
         />
         <Card
           title="Bankinnskudd"

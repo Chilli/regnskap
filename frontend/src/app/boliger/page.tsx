@@ -1,7 +1,7 @@
 "use client";
 
 import { api, Bolig } from "@/lib/api";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -156,8 +156,8 @@ export default function BoligerPage() {
             ) : boliger.length === 0 ? (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-gray-400">Ingen boliger ennå.</td></tr>
             ) : boliger.map(bolig => (
-              <>
-                <tr key={bolig.id} className={`hover:bg-gray-50 ${redigerBolig?.id === bolig.id ? "bg-indigo-50" : ""}`}>
+              <Fragment key={bolig.id}>
+                <tr className={`hover:bg-gray-50 ${redigerBolig?.id === bolig.id ? "bg-indigo-50" : ""}`}>
                   <td className="px-4 py-3 font-medium text-gray-900">{bolig.navn}</td>
                   <td className="px-4 py-3 text-gray-600">{bolig.adresse || "—"}</td>
                   <td className="px-4 py-3 text-gray-500">{bolig.epost}</td>
@@ -173,13 +173,13 @@ export default function BoligerPage() {
                   </td>
                 </tr>
                 {redigerBolig?.id === bolig.id && (
-                  <tr key={`edit-${bolig.id}`}>
+                  <tr>
                     <td colSpan={5} className="px-4 py-4 bg-indigo-50 border-b border-indigo-100">
                       <BoligForm values={editForm} onChange={setEditForm} onSubmit={handleUpdate} submitLabel="Lagre endringer" onCancel={() => setRedigerBolig(null)} />
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>

@@ -1341,6 +1341,112 @@ def send_faktura_pa_nytt(faktura_id: int):
     EpostTjeneste.send_faktura(kunde, faktura_id, faktura['total_belop'], selskap_info, vedlegg_sti=pdf_sti)
     return {"message": f"Faktura {faktura_id} sendt til {kunde.epost}"}
 
+@app.get("/api/aarsavslutning")
+def hent_aarsavslutninger():
+    """Returnerer liste over gjennomførte årsavslutninger."""
+    conn = app.state.system.db.conn
+    rader = conn.execute(
+        "SELECT * FROM system_logg WHERE hendelse = 'AARSAVSLUTNING' ORDER BY id DESC"
+    ).fetchall()
+    lasedato = app.state.system.hent_lasedato()
+    return {
+        "avslutninger": [dict(r) for r in rader],
+        "lasedato": lasedato.isoformat() if lasedato else None
+    }
+
+@app.post("/api/aarsavslutning")
+def kjor_aarsavslutning(payload: dict):
+    """
+    Gjennomfører årsavslutning for et gitt år:
+    1. Beregner årsresultat (sum inntekter + kostnader)
+    2. Bokfører overføring av resultat til egenkapital (konto 2050)
+    3. Låser perioden t.o.m 31.12 det aktuelle året
+    """
+    ar = int(payload.get("ar", 0))
+    if not ar:
+        raise HTTPException(status_code=400, detail="År mangler")
+
+    lasedato_eksisterende = app.state.system.hent_lasedato()
+    if lasedato_eksisterende and lasedato_eksisterende >= datetime.date(ar, 12, 31):
+        raise HTTPException(status_code=400, detail=f"År {ar} er allerede låst")
+
+    conn = app.state.system.db.conn
+
+    # Hent alle kontoer med type
+    kontoer = {r["kode"]: r["type"] for r in conn.execute("SELECT kode, type FROM konto").fetchall()}
+
+    # Summer alle resultatkontoer (Inntekt + Kostnad) for det aktuelle året
+    resultat_kontoer = [k for k, t in kontoer.items() if t in ("Inntekt", "Kostnad")]
+    if not resultat_kontoer:
+        raise HTTPException(status_code=400, detail="Ingen resultatkontoer funnet")
+
+    placeholder = ",".join("?" * len(resultat_kontoer))
+    ar_start = f"{ar}-01-01"
+    ar_slutt = f"{ar}-12-31"
+
+    rad = conn.execute(
+        f"""SELECT COALESCE(SUM(p.belop), 0) as sum
+            FROM postering p
+            JOIN transaksjon t ON p.transaksjon_id = t.id
+            WHERE p.konto_kode IN ({placeholder})
+            AND t.dato BETWEEN ? AND ?""",
+        (*resultat_kontoer, ar_start, ar_slutt)
+    ).fetchone()
+
+    arsresultat = rad["sum"] if rad else 0.0
+
+    if abs(arsresultat) < 0.01:
+        # Ingen resultat å overføre — lås bare perioden
+        app.state.system.sett_lasedato(datetime.date(ar, 12, 31))
+        app.state.system.logg_hendelse(
+            "AARSAVSLUTNING",
+            f"Årsavslutning {ar}: Nullresultat. Periode låst t.o.m {ar}-12-31"
+        )
+        return {"message": f"Årsavslutning {ar} gjennomført. Nullresultat — ingen overføring.", "arsresultat": 0.0}
+
+    # Bokfør: overfør årsresultat til egenkapital
+    # Resultatkontoene har sum = årsresultat (positivt = overskudd hvis kostnader > inntekter i system)
+    # Motpostering på 2050 Annen egenkapital
+    from regnskap import Postering as P
+    lukkedato = datetime.date(ar, 12, 31)
+    posteringer = []
+
+    # Null ut alle resultatkontoer
+    for kode in resultat_kontoer:
+        rad_k = conn.execute(
+            f"""SELECT COALESCE(SUM(p.belop), 0) as sum
+                FROM postering p
+                JOIN transaksjon t ON p.transaksjon_id = t.id
+                WHERE p.konto_kode = ?
+                AND t.dato BETWEEN ? AND ?""",
+            (kode, ar_start, ar_slutt)
+        ).fetchone()
+        saldo = rad_k["sum"] if rad_k else 0.0
+        if abs(saldo) > 0.01:
+            posteringer.append(P(kode, -saldo))  # Nullstill kontoen
+
+    # Motpost på egenkapital
+    posteringer.append(P("2050", arsresultat))
+
+    app.state.system.bokfor_transaksjon(
+        lukkedato,
+        f"Årsavslutning {ar} — overføring av årsresultat til egenkapital",
+        posteringer
+    )
+
+    # Lås perioden
+    app.state.system.sett_lasedato(lukkedato)
+    app.state.system.logg_hendelse(
+        "AARSAVSLUTNING",
+        f"Årsavslutning {ar}: Årsresultat {arsresultat:,.2f} kr overført til konto 2050. Periode låst t.o.m {ar}-12-31"
+    )
+
+    return {
+        "message": f"Årsavslutning {ar} gjennomført",
+        "arsresultat": arsresultat,
+        "lasedato": lukkedato.isoformat()
+    }
+
 @app.get("/api/innstillinger/epost", response_model=EpostInnstillingerResponse)
 def hent_epostinnstillinger():
     info = hent_selskap_info_med_default()
