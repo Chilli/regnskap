@@ -376,6 +376,18 @@ def opprett_bolig(bolig: BoligCreate):
         sameiebrok=kunde.sameiebrok, areal=kunde.areal
     )
 
+@app.put("/api/boliger/{bolig_id}", response_model=BoligResponse)
+def oppdater_bolig(bolig_id: int, bolig: BoligCreate):
+    conn = app.state.system.db.conn
+    conn.execute(
+        "UPDATE kunde SET navn=?, epost=?, telefon=?, adresse=?, seksjonsnummer=?, sameiebrok=?, areal=? WHERE id=?",
+        (bolig.navn, bolig.epost, bolig.telefon, bolig.adresse, bolig.seksjonsnummer, bolig.sameiebrok, bolig.areal, bolig_id)
+    )
+    conn.commit()
+    return BoligResponse(id=bolig_id, navn=bolig.navn, epost=bolig.epost, telefon=bolig.telefon,
+                         adresse=bolig.adresse, seksjonsnummer=bolig.seksjonsnummer,
+                         sameiebrok=bolig.sameiebrok, areal=bolig.areal)
+
 @app.delete("/api/boliger/{bolig_id}")
 def slett_bolig(bolig_id: int):
     try:

@@ -1,13 +1,14 @@
 "use client";
 
 import Card from "@/components/Card";
-import { api, ApenPost, BalanseRad, ReskontroRad } from "@/lib/api";
+import { api, ApenPost, BalanseRad, Bolig, ReskontroRad } from "@/lib/api";
 import { useEffect, useState } from "react";
 
 interface DashboardData {
   reskontro: ReskontroRad[];
   balanse: BalanseRad[];
   apnePoster: ApenPost[];
+  boliger: Bolig[];
 }
 
 export default function Home() {
@@ -18,12 +19,13 @@ export default function Home() {
   useEffect(() => {
     async function load() {
       try {
-        const [reskontro, balanse, apnePoster] = await Promise.all([
+        const [reskontro, balanse, apnePoster, boliger] = await Promise.all([
           api.hentReskontro(),
           api.hentBalanse(),
           api.hentApnePoster(),
+          api.hentBoliger(),
         ]);
-        setData({ reskontro, balanse, apnePoster });
+        setData({ reskontro, balanse, apnePoster, boliger });
         setError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Kunne ikke laste dashboard");
@@ -75,8 +77,8 @@ export default function Home() {
         />
         <Card
           title="Antall boliger"
-          value={data?.reskontro.length || 0}
-          subtitle="Registrerte seksjoner"
+          value={data?.boliger.length || 0}
+          subtitle="Registrerte i vellaget"
           icon="🏠"
         />
       </div>
