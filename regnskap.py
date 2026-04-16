@@ -241,7 +241,7 @@ class Database:
 
 class PDFGenerator:
     @staticmethod
-    def lag_faktura_pdf(faktura_id: int, kunde: Kunde, linjer: List[FakturaLinje], selskap: SelskapInfo, dato, forfall, total) -> str:
+    def lag_faktura_pdf(faktura_id: int, kunde: Kunde, linjer: List[FakturaLinje], selskap: SelskapInfo, dato, forfall, total, mappe: str = "fakturaer") -> str:
         pdf = FPDF()
         pdf.set_auto_page_break(auto=True, margin=15)
         pdf.add_page()
@@ -383,7 +383,6 @@ class PDFGenerator:
         pdf.cell(0, 5, "Kontakt: Styret: mileveienvel@outlook.com  |  Økonomi: jcmadsen@gmail.com", 0, 1, "L")
         
         # --- Lagring til fil ---
-        mappe = "fakturaer"
         if not os.path.exists(mappe):
             os.makedirs(mappe)
             
@@ -745,8 +744,9 @@ class AvtaleManager:
         self.db.conn.commit()
 
 class FakturaManager:
-    def __init__(self, db: Database, regnskap: RegnskapsSystem, reskontro: ReskontroManager, selskap_mgr: SelskapManager, avtale_mgr: AvtaleManager = None):
+    def __init__(self, db: Database, regnskap: RegnskapsSystem, reskontro: ReskontroManager, selskap_mgr: SelskapManager, avtale_mgr: AvtaleManager = None, faktura_mappe: str = "fakturaer"):
         self.db = db
+        self.faktura_mappe = faktura_mappe
         self.regnskap = regnskap
         self.reskontro = reskontro
         self.selskap_mgr = selskap_mgr
@@ -784,7 +784,7 @@ class FakturaManager:
 
         # 3. Generer PDF
         selskap_info = self.selskap_mgr.hent_info()
-        pdf_fil = PDFGenerator.lag_faktura_pdf(faktura_id, kunde, linjer, selskap_info, dato, forfall, total)
+        pdf_fil = PDFGenerator.lag_faktura_pdf(faktura_id, kunde, linjer, selskap_info, dato, forfall, total, mappe=self.faktura_mappe)
 
         # 4. Send faktura på epost med vedlegg
         EpostTjeneste.send_faktura(kunde, faktura_id, total, selskap_info, vedlegg_sti=pdf_fil)

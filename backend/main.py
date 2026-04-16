@@ -171,6 +171,13 @@ def init_app_state(a, db_navn: str):
             a.state.system.db.conn.close()
         except Exception:
             pass
+    modus = "demo" if db_navn == DEMO_DB else "prod"
+    faktura_mappe = os.path.join(BASE_DIR, "fakturaer", modus)
+    bilag_mappe   = os.path.join(BASE_DIR, "bilag", modus)
+    os.makedirs(faktura_mappe, exist_ok=True)
+    os.makedirs(bilag_mappe, exist_ok=True)
+    a.state.faktura_mappe = faktura_mappe
+    a.state.bilag_mappe   = bilag_mappe
     a.state.system = RegnskapsSystem(db_navn)
     a.state.reskontro = ReskontroManager(a.state.system.db)
     a.state.selskap = SelskapManager(a.state.system.db)
@@ -180,12 +187,10 @@ def init_app_state(a, db_navn: str):
         a.state.system,
         a.state.reskontro,
         a.state.selskap,
-        a.state.avtaler
+        a.state.avtaler,
+        faktura_mappe=faktura_mappe
     )
     init_extra_tabeller(a.state.system.db.conn)
-    bilag_mappe = os.path.join(BASE_DIR, "bilag")
-    if not os.path.exists(bilag_mappe):
-        os.makedirs(bilag_mappe)
 
 
 # Initialize database connection
@@ -321,7 +326,7 @@ def finn_pdf_sti(faktura_id: int) -> str:
         raise HTTPException(status_code=404, detail="Bolig finnes ikke")
     safe_navn = "".join([c for c in kunde.navn if c.isalnum() or c in (' ', '.', '_', '-')]).strip()
     filnavn = f"Faktura_{faktura_id}_{safe_navn}.pdf"
-    full_sti = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "fakturaer", filnavn)
+    full_sti = os.path.join(app.state.faktura_mappe, filnavn)
     if not os.path.exists(full_sti):
         raise HTTPException(status_code=404, detail="PDF finnes ikke for denne fakturaen")
     return full_sti
@@ -512,7 +517,7 @@ def registrer_innbetaling(innbetaling: InnbetalingCreate):
 
 @app.post("/api/bilag/{transaksjon_id}")
 async def last_opp_bilag(transaksjon_id: int, fil: UploadFile = File(...)):
-    bilag_mappe = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "bilag")
+    bilag_mappe = app.state.bilag_mappe
     fil_extension = os.path.splitext(fil.filename)[1]
     sikker_filnavn = f"{transaksjon_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}{fil_extension}"
     filsti = os.path.join(bilag_mappe, sikker_filnavn)
