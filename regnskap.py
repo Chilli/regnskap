@@ -378,6 +378,9 @@ class PDFGenerator:
         pdf.cell(0, 5, f"Vennligst betal til konto: {selskap.bankkonto}", 0, 1, "L")
         pdf.cell(0, 5, "Merk faktura med bolignummer og fakturanummer", 0, 1, "L")
         pdf.cell(0, 5, f"Forfallsdato: {forfall}", 0, 1, "L")
+        pdf.ln(2)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 5, "Kontakt: Styret: mileveienvel@outlook.com  |  Økonomi: jcmadsen@gmail.com", 0, 1, "L")
         
         # --- Lagring til fil ---
         mappe = "fakturaer"
