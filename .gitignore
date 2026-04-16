@@ -16,6 +16,7 @@ regnskap.db
 # Generated files
 bilag/
 fakturaer/
+backup/
 
 # Next.js
 frontend/.next/

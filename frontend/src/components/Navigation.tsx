@@ -8,7 +8,9 @@ const navItems = [
   { href: "/boliger", label: "Boliger", icon: "🏠" },
   { href: "/faktura", label: "Faktura", icon: "💰" },
   { href: "/rapporter", label: "Rapporter", icon: "📑" },
+  { href: "/postering", label: "Postering", icon: "📝" },
   { href: "/avstemming", label: "Avstemming", icon: "🏦" },
+  { href: "/kontoplan", label: "Kontoplan", icon: "📋" },
   { href: "/innstillinger", label: "Innstillinger", icon: "⚙️" },
 ];
 
