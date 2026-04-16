@@ -459,6 +459,36 @@ def opprett_faktura(faktura: FakturaCreate):
     faktura_id = app.state.faktura.opprett_faktura(faktura.bolig_id, linjer)
     return {"id": faktura_id, "message": "Faktura opprettet"}
 
+@app.get("/api/avtaler")
+def hent_avtaler():
+    return app.state.avtaler.hent_alle_avtaler()
+
+@app.post("/api/avtaler")
+def opprett_avtale(payload: dict):
+    kunde_id   = payload.get("bolig_id")
+    frekvens   = int(payload.get("frekvens", 1))
+    start_dato = datetime.date.fromisoformat(payload.get("start_dato", datetime.date.today().isoformat()))
+    belop      = float(payload.get("belop", 0))
+    beskrivelse = payload.get("beskrivelse", "Felleskostnader")
+    konto      = payload.get("inntektskonto", "3600")
+    mva        = int(payload.get("mva_sats", 0))
+    if not kunde_id:
+        raise HTTPException(status_code=400, detail="bolig_id mangler")
+    app.state.avtaler.opprett_avtale(kunde_id, frekvens, start_dato, belop, beskrivelse, konto, mva)
+    return {"message": "Avtale opprettet"}
+
+@app.delete("/api/avtaler/{avtale_id}")
+def slett_avtale(avtale_id: int):
+    app.state.avtaler.slett_avtale(avtale_id)
+    return {"message": "Avtale slettet"}
+
+@app.post("/api/avtaler/kjor")
+def kjor_massefakturering(payload: dict = None):
+    dato_str = (payload or {}).get("dato", datetime.date.today().isoformat())
+    dato = datetime.date.fromisoformat(dato_str)
+    antall = app.state.faktura.kjor_massefakturering(dato)
+    return {"message": f"{antall} faktura(er) opprettet", "antall": antall}
+
 @app.post("/api/innbetalinger")
 def registrer_innbetaling(innbetaling: InnbetalingCreate):
     dato = datetime.date.fromisoformat(innbetaling.dato)
